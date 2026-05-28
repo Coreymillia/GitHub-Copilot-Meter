@@ -1,0 +1,16 @@
+[Unit]
+Description=GHCPMeter local GitHub Copilot meter helper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=coreymillia
+Group=coreymillia
+WorkingDirectory=/home/coreymillia/Documents/GHCPMeter
+ExecStart=/usr/bin/node /home/coreymillia/Documents/GHCPMeter/src/server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

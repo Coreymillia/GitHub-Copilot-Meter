@@ -13,6 +13,7 @@ But it is intentionally much smaller:
 - polls `GET /api/usage`
 - can trigger `POST /api/refresh` from the touchscreen
 - renders the same core billing values as the browser helper
+- supports multiple pages for summary, quota, models, and a 30-day usage graph
 
 ## Build
 
@@ -37,4 +38,5 @@ pio run -d /home/coreymillia/Documents/GHCPMeter/InvertedCYD
 - **REFRESH**: fetch the current `/api/usage`
 - **SYNC NOW**: tell the helper to refresh GitHub first, then reload usage
 - **SETUP**: reopen the local setup portal
-- **Tap anywhere above the bottom buttons**: switch between the summary screen and the detail screen
+- **Tap left side above the bottom buttons**: go to the previous page
+- **Tap right side above the bottom buttons**: go to the next page

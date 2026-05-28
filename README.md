@@ -2,6 +2,9 @@
 
 GHCPMeter is a small local dashboard for **GitHub Copilot personal metered usage**.
 
+> **June 2026 transition note**
+> GitHub is switching individual Copilot billing to the new AI credit system on **June 1, 2026**. This project is based on the billing endpoints available before that switch and may show partially outdated values, legacy premium request fields, or broken mappings during the transition. The project will be updated as soon as possible after June 1 to reflect the new AI credit billing model.
+
 It runs as a lightweight Node helper on a Pi or desktop, reads the same GitHub billing data your browser sees, and exposes that data in two ways:
 
 1. a **browser dashboard** on the host machine
@@ -20,6 +23,8 @@ GHCPMeter focuses on the billing numbers that are actually useful day to day:
 - total monthly spend
 - credit equivalents
 - reset date
+- premium request analytics by model
+- 30-day usage chart data for display clients
 
 ## Project layout
 
@@ -60,6 +65,7 @@ The helper polls:
 
 - `https://github.com/settings/billing/usage_chart?group=0&period=3&product=&query=`
 - `https://github.com/github-copilot/chat/entitlement`
+- optionally, your `https://github.com/settings/billing/copilot_usage_table?...` premium requests table URL
 
 It then combines those responses into a single meter payload and serves:
 
@@ -99,6 +105,35 @@ Start the helper:
 npm start
 ```
 
+## Run on boot with systemd
+
+This repository includes a systemd unit at:
+
+```text
+systemd/ghcpmeter.service
+```
+
+Install and enable it on a Raspberry Pi or other Linux host:
+
+```bash
+cd /home/coreymillia/Documents/GHCPMeter
+sudo cp systemd/ghcpmeter.service /etc/systemd/system/ghcpmeter.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now ghcpmeter.service
+```
+
+Check status:
+
+```bash
+systemctl status ghcpmeter.service
+```
+
+Follow logs:
+
+```bash
+journalctl -u ghcpmeter.service -f
+```
+
 The helper will listen on:
 
 ```text
@@ -131,6 +166,7 @@ Open the dashboard in a browser and fill in the local settings form.
 - plan override (`auto`, `pro`, `pro+`, `max`)
 - poll interval
 - custom endpoint URLs
+- premium usage table URL for per-model premium request analytics
 
 Settings are stored locally in:
 
@@ -152,6 +188,8 @@ The easiest safe workflow is:
 6. paste it into the GHCPMeter dashboard settings form
 
 The helper normalizes common pasted formats, including values copied with a leading `cookie:` label.
+
+The same GitHub cookie is reused for the premium usage table endpoint. You do **not** need a separate cookie field for premium analytics.
 
 ## Security notes
 
@@ -175,12 +213,21 @@ It shows:
 - monthly spend
 - credit values
 - reset date
+- premium request totals and per-model premium request rows when a premium table URL is configured
+- chart data that can be used by display clients for a 30-day usage graph
 
 It also lets you:
 
 - save local config
 - manually refresh usage
 - inspect the raw meter JSON
+
+The bundled CYD companion now includes:
+
+- a summary page
+- a synced quota page
+- a models page
+- a 30-day usage line graph page
 
 ## API
 
@@ -232,7 +279,8 @@ Example:
 {
   "githubCookie": "user_session=...",
   "planOverride": "auto",
-  "pollIntervalSec": 60
+  "pollIntervalSec": 60,
+  "premiumUsageTableUrl": "https://github.com/settings/billing/copilot_usage_table?customer_id=...&group=7&period=3&query=&unit_type=12&page=1"
 }
 ```
 

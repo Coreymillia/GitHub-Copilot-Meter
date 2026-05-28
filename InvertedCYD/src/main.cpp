@@ -42,7 +42,9 @@ static constexpr uint32_t WIFI_RETRY_DRAW_MS = 2000;
 
 enum class MeterPage : uint8_t {
   Summary = 0,
-  Details,
+  Quota,
+  Models,
+  Graph,
 };
 
 struct TouchButton {
@@ -92,6 +94,35 @@ static String formatUsd(double value) {
 
 static String formatWhole(double value) {
   return String(static_cast<long>(value + (value >= 0 ? 0.5 : -0.5)));
+}
+
+static String formatCountValue(double value) {
+  double roundedWhole = value >= 0 ? floor(value + 0.5) : ceil(value - 0.5);
+  if (fabs(value - roundedWhole) < 0.05) {
+    return String(static_cast<long>(roundedWhole));
+  }
+  return String(value, 1);
+}
+
+static const char *pageLabel(MeterPage page) {
+  switch (page) {
+    case MeterPage::Summary:
+      return "Summary";
+    case MeterPage::Quota:
+      return "Quota";
+    case MeterPage::Models:
+      return "Models";
+    case MeterPage::Graph:
+      return "Graph";
+  }
+  return "Meter";
+}
+
+static MeterPage stepPage(int delta) {
+  constexpr int pageCount = 4;
+  int index = static_cast<int>(currentPage);
+  index = (index + delta + pageCount) % pageCount;
+  return static_cast<MeterPage>(index);
 }
 
 static void setToast(const String &message, unsigned long durationMs = 2400) {
@@ -148,7 +179,7 @@ static void drawHeader() {
   gfx->setTextSize(1);
   gfx->setCursor(170, 8);
   gfx->setTextColor(COLOR_DIM, COLOR_HEADER);
-  gfx->print(currentPage == MeterPage::Summary ? "Summary" : "Details");
+  gfx->print(pageLabel(currentPage));
   gfx->setCursor(270, 8);
   if (WiFi.status() == WL_CONNECTED) {
     gfx->setTextColor(COLOR_OK, COLOR_HEADER);
@@ -172,7 +203,7 @@ static void drawFooter() {
   } else if (!meterUsage.ok && meterUsage.lastError.length()) {
     gfx->print(trimTail("Err: " + meterUsage.lastError, 46));
   } else {
-    gfx->print(currentPage == MeterPage::Summary ? "Tap screen for details." : "Tap screen for summary.");
+    gfx->print("Left prev | Right next");
   }
 }
 
@@ -181,20 +212,121 @@ static void drawSummaryPage() {
   drawCard(165, 34, 145, 48, "Monthly spend", formatUsd(meterUsage.totalMonthlySpendUsd), COLOR_WARN);
   drawCard(10, 88, 145, 48, "Subscription", formatUsd(meterUsage.subscriptionUsd), COLOR_OK);
   drawCard(165, 88, 145, 48, "Total usage", formatUsd(meterUsage.totalUsageUsd), COLOR_HEADER_TEXT);
-  drawCard(10, 142, 145, 48, "Included used", formatUsd(meterUsage.includedUsageConsumedUsd), COLOR_OK);
+  drawCard(10, 142, 145, 48, "Included", formatUsd(meterUsage.includedCoveredUsd), COLOR_OK);
   drawCard(165, 142, 145, 48, "Overage", formatUsd(meterUsage.overageUsd), meterUsage.overageUsd > 0.0 ? COLOR_OVERAGE : COLOR_TEXT);
 }
 
-static void drawDetailsPage() {
-  drawCard(10, 34, 145, 48, "Included left", formatUsd(meterUsage.remainingIncludedUsd), COLOR_OK);
-  drawCard(165, 34, 145, 48, "Allowance", formatUsd(meterUsage.includedAllowanceUsd), COLOR_HEADER_TEXT);
-  drawCard(10, 88, 145, 48, "Used credits", formatWhole(meterUsage.usedCredits), COLOR_TEXT);
-  drawCard(165, 88, 145, 48, "Overage cr", formatWhole(meterUsage.overageCredits), meterUsage.overageCredits > 0.0 ? COLOR_OVERAGE : COLOR_TEXT);
-  drawCard(10, 142, 145, 48, "Included %", String(meterUsage.includedUsagePercent, 1) + "%", COLOR_WARN);
+static void drawQuotaPage() {
+  int premiumUsed = meterUsage.premiumInteractionsLimit - meterUsage.premiumInteractionsRemaining;
+  drawCard(10, 34, 145, 48, "Covered", formatUsd(meterUsage.includedCoveredUsd), COLOR_OK);
+  drawCard(165, 34, 145, 48, "Billed", formatUsd(meterUsage.overageUsd), meterUsage.overageUsd > 0.0 ? COLOR_OVERAGE : COLOR_TEXT);
+  drawCard(10, 88, 145, 48, "Premium used", formatWhole(premiumUsed), premiumUsed > meterUsage.premiumInteractionsLimit ? COLOR_OVERAGE : COLOR_TEXT);
+  drawCard(165, 88, 145, 48, "Premium left", formatWhole(meterUsage.premiumInteractionsRemaining), meterUsage.premiumInteractionsRemaining < 0 ? COLOR_OVERAGE : COLOR_OK);
+  drawCard(10, 142, 145, 48, "Premium cap", formatWhole(meterUsage.premiumInteractionsLimit), COLOR_HEADER_TEXT);
   drawCard(165, 142, 145, 48, "Reset", meterUsage.resetDate.length() ? meterUsage.resetDate : String("n/a"), COLOR_TEXT);
+
   double usagePercent = meterUsage.includedUsagePercent;
+  if (meterUsage.premiumInteractionsLimit > 0) {
+    usagePercent = (static_cast<double>(premiumUsed) / static_cast<double>(meterUsage.premiumInteractionsLimit)) * 100.0;
+  }
   uint16_t barColor = usagePercent >= 100.0 ? COLOR_OVERAGE : (usagePercent >= 80.0 ? COLOR_WARN : COLOR_OK);
   drawProgressBar(10, 198, 300, 10, usagePercent, barColor);
+}
+
+static void drawModelsPage() {
+  gfx->fillRoundRect(8, 34, 304, 176, 6, COLOR_PANEL);
+  gfx->drawRoundRect(8, 34, 304, 176, 6, COLOR_DIM);
+
+  gfx->setTextColor(COLOR_DIM, COLOR_PANEL);
+  gfx->setTextSize(1);
+  gfx->setCursor(16, 42);
+  gfx->print("Model");
+  gfx->setCursor(188, 42);
+  gfx->print("Inc");
+  gfx->setCursor(228, 42);
+  gfx->print("Bill");
+  gfx->setCursor(276, 42);
+  gfx->print("$");
+
+  if (meterUsage.modelCount == 0) {
+    gfx->setTextColor(COLOR_TEXT, COLOR_PANEL);
+    gfx->setTextSize(2);
+    gfx->setCursor(54, 108);
+    gfx->print("No model rows");
+    return;
+  }
+
+  for (size_t i = 0; i < meterUsage.modelCount; i++) {
+    int y = 58 + static_cast<int>(i) * 14;
+    if (y > 186) {
+      break;
+    }
+    const MeterModelUsage &row = meterUsage.models[i];
+    gfx->setTextColor(COLOR_TEXT, COLOR_PANEL);
+    gfx->setTextSize(1);
+    gfx->setCursor(16, y);
+    gfx->print(trimTail(row.model, 20));
+    gfx->setCursor(184, y);
+    gfx->print(formatCountValue(row.includedRequests));
+    gfx->setCursor(224, y);
+    gfx->print(formatCountValue(row.billedRequests));
+    gfx->setCursor(268, y);
+    gfx->print(trimTail(formatUsd(row.billedAmountUsd), 6));
+  }
+}
+
+static void drawGraphPage() {
+  drawCard(10, 34, 145, 40, "Latest day", meterUsage.chartCount ? formatUsd(meterUsage.chart[meterUsage.chartCount - 1].grossUsd) : String("$0.00"), COLOR_HEADER_TEXT);
+
+  double maxGrossUsd = 0.0;
+  for (size_t i = 0; i < meterUsage.chartCount; i++) {
+    if (meterUsage.chart[i].grossUsd > maxGrossUsd) {
+      maxGrossUsd = meterUsage.chart[i].grossUsd;
+    }
+  }
+  drawCard(165, 34, 145, 40, "Max day", formatUsd(maxGrossUsd), COLOR_WARN);
+
+  gfx->fillRoundRect(8, 82, 304, 108, 6, COLOR_PANEL);
+  gfx->drawRoundRect(8, 82, 304, 108, 6, COLOR_DIM);
+  gfx->setTextColor(COLOR_DIM, COLOR_PANEL);
+  gfx->setTextSize(1);
+  gfx->setCursor(16, 90);
+  gfx->print("30-day usage");
+
+  if (meterUsage.chartCount < 2 || maxGrossUsd <= 0.0) {
+    gfx->setTextColor(COLOR_TEXT, COLOR_PANEL);
+    gfx->setTextSize(2);
+    gfx->setCursor(72, 132);
+    gfx->print("No chart yet");
+    return;
+  }
+
+  const int graphX = 18;
+  const int graphY = 104;
+  const int graphW = 286;
+  const int graphH = 72;
+  gfx->drawRect(graphX, graphY, graphW, graphH, COLOR_DIM);
+  gfx->setCursor(22, 182);
+  gfx->print("0");
+  gfx->setCursor(246, 182);
+  gfx->print(formatUsd(meterUsage.chart[meterUsage.chartCount - 1].grossUsd));
+  gfx->setCursor(22, 96);
+  gfx->print(formatUsd(maxGrossUsd));
+
+  int lastX = graphX;
+  int lastY = graphY + graphH - 1;
+  for (size_t i = 0; i < meterUsage.chartCount; i++) {
+    const MeterChartPoint &point = meterUsage.chart[i];
+    int x = graphX + static_cast<int>((static_cast<float>(i) / static_cast<float>(meterUsage.chartCount - 1)) * static_cast<float>(graphW - 1));
+    int y = graphY + graphH - 1 - static_cast<int>((point.grossUsd / maxGrossUsd) * static_cast<float>(graphH - 4));
+    y = constrain(y, graphY + 2, graphY + graphH - 1);
+    if (i > 0) {
+      gfx->drawLine(lastX, lastY, x, y, COLOR_HEADER_TEXT);
+    }
+    gfx->fillCircle(x, y, 1, COLOR_WARN);
+    lastX = x;
+    lastY = y;
+  }
 }
 
 static void renderUi() {
@@ -212,8 +344,12 @@ static void renderUi() {
 
   if (currentPage == MeterPage::Summary) {
     drawSummaryPage();
+  } else if (currentPage == MeterPage::Quota) {
+    drawQuotaPage();
+  } else if (currentPage == MeterPage::Models) {
+    drawModelsPage();
   } else {
-    drawDetailsPage();
+    drawGraphPage();
   }
 
   drawFooter();
@@ -254,7 +390,11 @@ static void handleTouch(int x, int y) {
     meterOpenSetupPortal();
     return;
   }
-  currentPage = currentPage == MeterPage::Summary ? MeterPage::Details : MeterPage::Summary;
+  if (y < buttonRefresh.y) {
+    currentPage = x < 160 ? stepPage(-1) : stepPage(1);
+  } else {
+    currentPage = stepPage(1);
+  }
   renderDirty = true;
 }
 
