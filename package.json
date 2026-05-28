@@ -1,0 +1,14 @@
+{
+  "name": "ghcpmeter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local GitHub Copilot meter helper for Pi/desktop dashboards and ESP32 displays",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
