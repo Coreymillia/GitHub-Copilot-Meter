@@ -12,7 +12,7 @@ But it is intentionally much smaller:
 - opens a captive setup portal when BOOT is held at power-on
 - polls `GET /api/usage`
 - can trigger `POST /api/refresh` from the touchscreen
-- renders the same core billing values as the browser helper
+- renders the same AI credit and premium quota values as the browser helper
 - supports multiple pages for summary, quota, models, and a 30-day usage graph
 
 ## Build

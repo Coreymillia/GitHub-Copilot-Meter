@@ -3,7 +3,7 @@
 GHCPMeter is a small local dashboard for **GitHub Copilot personal metered usage**.
 
 > **June 2026 transition note**
-> GitHub is switching individual Copilot billing to the new AI credit system on **June 1, 2026**. This project is based on the billing endpoints available before that switch and may show partially outdated values, legacy premium request fields, or broken mappings during the transition. The project will be updated as soon as possible after June 1 to reflect the new AI credit billing model.
+> GHCPMeter now tracks the new **AI credit** billing model live on top of GitHub's browser-facing billing endpoints. Some GitHub fields still use older premium-request naming, so the UI keeps **usage value** and **AI credit quota** visible separately when GitHub reports them differently.
 
 It runs as a lightweight Node helper on a Pi or desktop, reads the same GitHub billing data your browser sees, and exposes that data in two ways:
 
@@ -16,12 +16,11 @@ GHCPMeter focuses on the billing numbers that are actually useful day to day:
 
 - current plan
 - subscription cost
-- total metered usage
-- included usage consumed
-- included usage remaining
+- AI credits used
+- AI credits remaining
+- AI credit allowance
+- premium usage counters
 - billed overage
-- total monthly spend
-- credit equivalents
 - reset date
 - premium request analytics by model
 - 30-day usage chart data for display clients
@@ -47,15 +46,15 @@ GHCPMeter/
 
 ## Screenshots / photos
 
-### Browser helper
+### Updated browser helper UI
 
-![GHCPMeter browser helper](images/IMG_20260527_192811995_HDR.jpg)
+![GHCPMeter browser helper with Pro+ AI credit dashboard](images/IMG_20260601_012402641_HDR.jpg)
 
-### Inverted CYD client
+### Updated Inverted CYD client
 
-![GHCPMeter CYD summary](images/IMG_20260527_194652853_HDR.jpg)
+![GHCPMeter CYD summary screen with AI credit overview](images/IMG_20260601_012131153.jpg)
 
-![GHCPMeter CYD details](images/IMG_20260527_194702561_HDR.jpg)
+![GHCPMeter CYD quota screen with AI cap and reset details](images/IMG_20260601_011850802.jpg)
 
 ## How it works
 
@@ -74,6 +73,23 @@ It then combines those responses into a single meter payload and serves:
 - `GET /api/usage`
 - `POST /api/settings`
 - `POST /api/refresh`
+
+## AI credits vs premium usage
+
+This project now treats the meter in two separate ways:
+
+- **Usage value** is the dollar-value side of usage. In GHCPMeter, `1 credit = $0.01`, so `29.8` credits is shown as about `$0.30`.
+- **AI credits** are the live allowance / remaining counters derived from GitHub's entitlement quota.
+- **Premium usage** is the legacy name GitHub still uses for part of that entitlement response.
+
+Those numbers are related, but they are **not always the same field**. During the June 2026 transition, the chart dollars and the entitlement quota can move at slightly different times, so GHCPMeter now keeps the **usage value** and **AI credit quota** views separate on purpose.
+
+For plan detection in `auto` mode, GHCPMeter now:
+
+1. trusts known entitlement plan aliases such as `pro_plus`
+2. falls back to the entitlement quota limit when GitHub's plan label is inconsistent
+
+The entitlement quota is also used as the source of truth for the included credit allowance, so Pro+ now resolves to the live `7000` credit allowance instead of relying only on a hardcoded label match.
 
 ## Requirements
 
@@ -205,13 +221,12 @@ The browser dashboard is the main standalone UI.
 It shows:
 
 - plan
-- subscription
-- total usage
-- included usage used
-- included usage left
+- base plan cost
+- usage value
+- AI credits used
+- AI credits left
+- AI credit cap
 - billed overage
-- monthly spend
-- credit values
 - reset date
 - premium request totals and per-model premium request rows when a premium table URL is configured
 - chart data that can be used by display clients for a 30-day usage graph
@@ -247,22 +262,32 @@ Example shape:
   "lastUpdated": 1779930000000,
   "lastError": "",
   "meter": {
-    "plan": "pro",
-    "subscriptionUsd": 10,
+    "plan": "pro+",
+    "subscriptionUsd": 39,
+    "basePlanCostUsd": 39,
     "totalUsageUsd": 49.82,
     "currentMeteredUsageUsd": 49.82,
-    "includedAllowanceUsd": 15,
+    "includedAllowanceUsd": 70,
     "includedUsageConsumedUsd": 12.02,
-    "remainingIncludedUsd": 2.98,
+    "remainingIncludedUsd": 57.98,
     "overageUsd": 37.08,
     "billedOverageUsd": 37.08,
-    "totalMonthlySpendUsd": 47.08,
+    "totalMonthlySpendUsd": 76.08,
     "usedCredits": 4982,
-    "includedCredits": 1500,
+    "usageValueCredits": 4982,
+    "aiCreditsUsed": 1202,
+    "includedCredits": 7000,
+    "aiCreditsIncluded": 7000,
     "includedUsageConsumedCredits": 1202,
     "overageCredits": 3708,
-    "remainingIncludedCredits": 298,
-    "includedUsagePercent": 80.1,
+    "aiCreditsOverage": 3708,
+    "remainingIncludedCredits": 5798,
+    "aiCreditsRemaining": 5798,
+    "includedUsagePercent": 17.2,
+    "aiCreditsPercent": 17.2,
+    "premiumInteractionsUsed": 1202,
+    "premiumInteractionsLimit": 7000,
+    "premiumInteractionsRemaining": 5798,
     "resetDateUtc": "2026-06-01T00:00:00.000Z",
     "overagesEnabled": true
   }
@@ -304,7 +329,7 @@ It is based on the inverted-display CompanionCYD hardware pattern from the large
 - stores Wi-Fi + helper host settings in Preferences
 - polls `GET /api/usage`
 - can trigger `POST /api/refresh`
-- summary screen + details screen
+- summary, quota, models, and graph screens
 - touch toggle between pages
 
 ### Build

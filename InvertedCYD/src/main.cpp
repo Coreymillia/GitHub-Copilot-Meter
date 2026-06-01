@@ -209,26 +209,22 @@ static void drawFooter() {
 
 static void drawSummaryPage() {
   drawCard(10, 34, 145, 48, "Plan", meterUsage.plan.length() ? meterUsage.plan : String("offline"));
-  drawCard(165, 34, 145, 48, "Monthly spend", formatUsd(meterUsage.totalMonthlySpendUsd), COLOR_WARN);
-  drawCard(10, 88, 145, 48, "Subscription", formatUsd(meterUsage.subscriptionUsd), COLOR_OK);
-  drawCard(165, 88, 145, 48, "Total usage", formatUsd(meterUsage.totalUsageUsd), COLOR_HEADER_TEXT);
-  drawCard(10, 142, 145, 48, "Included", formatUsd(meterUsage.includedCoveredUsd), COLOR_OK);
+  drawCard(165, 34, 145, 48, "Base plan", formatUsd(meterUsage.subscriptionUsd), COLOR_OK);
+  drawCard(10, 88, 145, 48, "Usage $", formatUsd(meterUsage.totalUsageUsd), COLOR_HEADER_TEXT);
+  drawCard(165, 88, 145, 48, "AI left", formatCountValue(meterUsage.aiCreditsRemaining), COLOR_OK);
+  drawCard(10, 142, 145, 48, "AI used", formatCountValue(meterUsage.aiCreditsUsed), COLOR_HEADER_TEXT);
   drawCard(165, 142, 145, 48, "Overage", formatUsd(meterUsage.overageUsd), meterUsage.overageUsd > 0.0 ? COLOR_OVERAGE : COLOR_TEXT);
 }
 
 static void drawQuotaPage() {
-  int premiumUsed = meterUsage.premiumInteractionsLimit - meterUsage.premiumInteractionsRemaining;
-  drawCard(10, 34, 145, 48, "Covered", formatUsd(meterUsage.includedCoveredUsd), COLOR_OK);
-  drawCard(165, 34, 145, 48, "Billed", formatUsd(meterUsage.overageUsd), meterUsage.overageUsd > 0.0 ? COLOR_OVERAGE : COLOR_TEXT);
-  drawCard(10, 88, 145, 48, "Premium used", formatWhole(premiumUsed), premiumUsed > meterUsage.premiumInteractionsLimit ? COLOR_OVERAGE : COLOR_TEXT);
-  drawCard(165, 88, 145, 48, "Premium left", formatWhole(meterUsage.premiumInteractionsRemaining), meterUsage.premiumInteractionsRemaining < 0 ? COLOR_OVERAGE : COLOR_OK);
-  drawCard(10, 142, 145, 48, "Premium cap", formatWhole(meterUsage.premiumInteractionsLimit), COLOR_HEADER_TEXT);
+  drawCard(10, 34, 145, 48, "AI cap", formatCountValue(meterUsage.aiCreditsIncluded), COLOR_HEADER_TEXT);
+  drawCard(165, 34, 145, 48, "AI left", formatCountValue(meterUsage.aiCreditsRemaining), COLOR_OK);
+  drawCard(10, 88, 145, 48, "AI over", formatCountValue(meterUsage.aiCreditsOverage), meterUsage.aiCreditsOverage > 0.0 ? COLOR_OVERAGE : COLOR_TEXT);
+  drawCard(165, 88, 145, 48, "Usage %", String(meterUsage.aiCreditsPercent, 1) + "%", COLOR_OK);
+  drawCard(10, 142, 145, 48, "Usage val", formatCountValue(meterUsage.usageValueCredits), COLOR_HEADER_TEXT);
   drawCard(165, 142, 145, 48, "Reset", meterUsage.resetDate.length() ? meterUsage.resetDate : String("n/a"), COLOR_TEXT);
 
-  double usagePercent = meterUsage.includedUsagePercent;
-  if (meterUsage.premiumInteractionsLimit > 0) {
-    usagePercent = (static_cast<double>(premiumUsed) / static_cast<double>(meterUsage.premiumInteractionsLimit)) * 100.0;
-  }
+  double usagePercent = meterUsage.aiCreditsPercent;
   uint16_t barColor = usagePercent >= 100.0 ? COLOR_OVERAGE : (usagePercent >= 80.0 ? COLOR_WARN : COLOR_OK);
   drawProgressBar(10, 198, 300, 10, usagePercent, barColor);
 }

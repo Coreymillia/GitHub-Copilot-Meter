@@ -39,6 +39,12 @@ struct MeterUsage {
   double overageUsd = 0;
   double totalMonthlySpendUsd = 0;
   double usedCredits = 0;
+  double usageValueCredits = 0;
+  double aiCreditsUsed = 0;
+  double aiCreditsIncluded = 0;
+  double aiCreditsRemaining = 0;
+  double aiCreditsOverage = 0;
+  double aiCreditsPercent = 0;
   double includedCredits = 0;
   double includedUsageConsumedCredits = 0;
   double overageCredits = 0;
@@ -88,6 +94,12 @@ static bool meterApiApplyUsageDocument(MeterUsage &usage, JsonDocument &doc, uin
   usage.overageCredits = meter["overageCredits"] | 0.0;
   usage.remainingIncludedCredits = meter["remainingIncludedCredits"] | 0.0;
   usage.includedUsagePercent = meter["includedUsagePercent"] | 0.0;
+  usage.usageValueCredits = meter["usageValueCredits"] | usage.usedCredits;
+  usage.aiCreditsUsed = meter["aiCreditsUsed"] | usage.includedUsageConsumedCredits;
+  usage.aiCreditsIncluded = meter["aiCreditsIncluded"] | usage.includedCredits;
+  usage.aiCreditsRemaining = meter["aiCreditsRemaining"] | usage.remainingIncludedCredits;
+  usage.aiCreditsOverage = meter["aiCreditsOverage"] | usage.overageCredits;
+  usage.aiCreditsPercent = meter["aiCreditsPercent"] | usage.includedUsagePercent;
   usage.overagesEnabled = meter["overagesEnabled"] | false;
   usage.premiumInteractionsLimit = meter["premiumInteractionsLimit"] | 0;
   usage.premiumInteractionsRemaining = meter["premiumInteractionsRemaining"] | 0;

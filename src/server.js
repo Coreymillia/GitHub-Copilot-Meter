@@ -79,6 +79,26 @@ function normalizePlanOverride(value) {
   return "auto";
 }
 
+function normalizeDetectedPlan(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  if (!normalized) {
+    return "";
+  }
+  if (normalized === "pro") {
+    return "pro";
+  }
+  if (normalized === "pro+" || normalized === "proplus" || normalized === "copilotpro+") {
+    return "pro+";
+  }
+  if (normalized === "max" || normalized === "copilotmax") {
+    return "max";
+  }
+  return "";
+}
+
 function normalizeCookieValue(value) {
   let normalized = String(value || "").trim();
   if (!normalized) {
@@ -304,14 +324,26 @@ async function fetchGitHubJson(requestUrl) {
   return payload;
 }
 
-function resolvePlan(entitlementPlan) {
+function resolvePlan(entitlementPlan, premiumInteractionsLimit) {
   const override = normalizePlanOverride(settings.planOverride);
   if (override !== "auto") {
     return override;
   }
-  const normalizedEntitlement = String(entitlementPlan || "").trim().toLowerCase();
-  if (normalizedEntitlement === "pro" || normalizedEntitlement === "pro+" || normalizedEntitlement === "max") {
-    return normalizedEntitlement;
+
+  const detectedPlan = normalizeDetectedPlan(entitlementPlan);
+  if (detectedPlan) {
+    return detectedPlan;
+  }
+
+  const numericLimit = parseNumberValue(premiumInteractionsLimit);
+  if (numericLimit >= PLAN_CREDITS.max) {
+    return "max";
+  }
+  if (numericLimit >= PLAN_CREDITS["pro+"]) {
+    return "pro+";
+  }
+  if (numericLimit >= PLAN_CREDITS.pro) {
+    return "pro";
   }
   return "pro";
 }
@@ -339,23 +371,30 @@ function buildMeter(usageChartPayload, entitlementPayload) {
   });
 
   const entitlementPlan = String(entitlementPayload?.plan || "").trim().toLowerCase();
-  const resolvedPlan = resolvePlan(entitlementPlan);
-  const includedCredits = PLAN_CREDITS[resolvedPlan] || PLAN_CREDITS.pro;
+  const premiumInteractionsLimit = roundTo(Math.max(0, parseNumberValue(entitlementPayload?.quotas?.limits?.premiumInteractions)), 1);
+  const premiumInteractionsRemaining = roundTo(
+    Math.max(0, parseNumberValue(entitlementPayload?.quotas?.remaining?.premiumInteractions)),
+    1,
+  );
+  const resolvedPlan = resolvePlan(entitlementPlan, premiumInteractionsLimit);
+  const includedCredits = premiumInteractionsLimit || PLAN_CREDITS[resolvedPlan] || PLAN_CREDITS.pro;
   const includedAllowanceUsd = roundTo(includedCredits / 100);
   const subscriptionUsd = roundTo(PLAN_SUBSCRIPTION_USD[resolvedPlan] || 0);
   const totalUsageUsd = roundTo(usedUsd);
-  const includedUsageConsumedUsd = roundTo(Math.min(includedAllowanceUsd, includedCoveredUsd || 0));
+  const premiumInteractionsUsed =
+    premiumInteractionsLimit > 0 ? roundTo(Math.max(0, premiumInteractionsLimit - premiumInteractionsRemaining), 1) : null;
+  const includedUsageConsumedCredits = premiumInteractionsUsed ?? roundTo(Math.min(includedAllowanceUsd, includedCoveredUsd || 0) * 100, 1);
+  const includedUsageConsumedUsd = roundTo(includedUsageConsumedCredits / 100);
   const billedOverageUsd = roundTo(Math.max(0, totalAmountUsd));
   const overageUsd = roundTo(
     billedOverageUsd > 0 ? billedOverageUsd : Math.max(0, totalUsageUsd - includedUsageConsumedUsd),
   );
   const usedCredits = roundTo(totalUsageUsd * 100, 1);
-  const includedUsageConsumedCredits = roundTo(includedUsageConsumedUsd * 100, 1);
   const overageCredits = roundTo(overageUsd * 100, 1);
-  const remainingIncludedCredits = Math.max(
-    0,
-    roundTo(includedCredits - includedUsageConsumedCredits, 1),
-  );
+  const remainingIncludedCredits =
+    premiumInteractionsLimit > 0
+      ? premiumInteractionsRemaining
+      : Math.max(0, roundTo(includedCredits - includedUsageConsumedCredits, 1));
   const remainingIncludedUsd = roundTo(remainingIncludedCredits / 100);
   const includedUsagePercent =
     includedCredits > 0
@@ -363,12 +402,17 @@ function buildMeter(usageChartPayload, entitlementPayload) {
       : 0;
   const effectivePercentUsed =
     includedCredits > 0 ? Math.min(100, roundTo((usedCredits / includedCredits) * 100, 1)) : 0;
+  const aiCreditsUsed = includedUsageConsumedCredits;
+  const aiCreditsRemaining = remainingIncludedCredits;
+  const aiCreditsPercent =
+    includedCredits > 0 ? Math.min(100, roundTo((aiCreditsUsed / includedCredits) * 100, 1)) : includedUsagePercent;
 
   return {
     plan: resolvedPlan,
     entitlementPlan: entitlementPlan || null,
     licenseType: entitlementPayload?.licenseType || null,
     subscriptionUsd,
+    basePlanCostUsd: subscriptionUsd,
     totalUsageUsd,
     currentMeteredUsageUsd: totalUsageUsd,
     usedUsd: totalUsageUsd,
@@ -384,19 +428,27 @@ function buildMeter(usageChartPayload, entitlementPayload) {
     includedCoveredUsd: roundTo(includedCoveredUsd),
     billedUsdFromChart: billedOverageUsd,
     usedCredits,
+    usageValueCredits: usedCredits,
+    aiCreditsUsed,
     includedCredits,
+    aiCreditsIncluded: includedCredits,
     includedUsageConsumedCredits,
+    aiCreditsIncludedUsed: includedUsageConsumedCredits,
     overageCredits,
+    aiCreditsOverage: overageCredits,
     remainingCredits: remainingIncludedCredits,
     remainingIncludedCredits,
-    includedUsagePercent,
+    aiCreditsRemaining,
+    includedUsagePercent: aiCreditsPercent,
+    aiCreditsPercent,
     percentUsed: effectivePercentUsed,
     totalMonthlySpendUsd: roundTo(subscriptionUsd + overageUsd),
     resetDate: entitlementPayload?.quotas?.resetDate || null,
     resetDateUtc: entitlementPayload?.quotas?.resetDateUtc || null,
     overagesEnabled: Boolean(entitlementPayload?.quotas?.overagesEnabled),
-    premiumInteractionsLimit: entitlementPayload?.quotas?.limits?.premiumInteractions ?? null,
-    premiumInteractionsRemaining: entitlementPayload?.quotas?.remaining?.premiumInteractions ?? null,
+    premiumInteractionsUsed,
+    premiumInteractionsLimit: premiumInteractionsLimit || null,
+    premiumInteractionsRemaining: premiumInteractionsLimit > 0 ? premiumInteractionsRemaining : null,
     chart,
   };
 }
@@ -647,6 +699,20 @@ function buildPageHtml() {
       return numeric.toFixed(2).replace(/\\.00$/, '').replace(/(\\.\\d)0$/, '$1');
     }
 
+    function formatPlanLabel(value) {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (normalized === 'pro+') {
+        return 'Pro+';
+      }
+      if (normalized === 'pro') {
+        return 'Pro';
+      }
+      if (normalized === 'max') {
+        return 'Max';
+      }
+      return value || '—';
+    }
+
     function escapeHtml(value) {
       return String(value || '')
         .replace(/&/g, '&amp;')
@@ -685,44 +751,19 @@ function buildPageHtml() {
       } else {
         status.className = 'ok';
         status.textContent = 'Updated ' + new Date(state.usage.lastUpdated).toLocaleString();
-        const hasLegacyPremiumQuota = meter.premiumInteractionsLimit != null;
-        const premiumUsed = hasLegacyPremiumQuota
-          ? Number(meter.premiumInteractionsLimit || 0) - Number(meter.premiumInteractionsRemaining || 0)
-          : null;
-        const quotaPercent = hasLegacyPremiumQuota && Number(meter.premiumInteractionsLimit || 0) > 0
-          ? Math.min(100, Math.max(0, (premiumUsed / Number(meter.premiumInteractionsLimit || 0)) * 100))
-          : Math.min(100, Number(meter.includedUsagePercent || 0));
+        const quotaPercent = Math.min(100, Number((meter.aiCreditsPercent ?? meter.includedUsagePercent) || 0));
         usageBar.style.width = quotaPercent + '%';
-        metrics.innerHTML = (hasLegacyPremiumQuota
-          ? [
-              ['Plan', meter.plan],
-              ['Subscription', formatUsd(meter.subscriptionUsd)],
-              ['Gross usage', formatUsd(meter.totalUsageUsd)],
-              ['Covered by plan', formatUsd(meter.includedCoveredUsd)],
-              ['Billed overage', formatUsd(meter.overageUsd)],
-              ['Monthly spend', formatUsd(meter.totalMonthlySpendUsd)],
-              ['Premium used', formatCount(premiumUsed)],
-              ['Premium limit', formatCount(meter.premiumInteractionsLimit)],
-              ['Premium remaining', formatCount(meter.premiumInteractionsRemaining)],
-              ['Quota used', String(quotaPercent.toFixed(1)) + '%'],
+        metrics.innerHTML = [
+              ['Plan', formatPlanLabel(meter.plan)],
+              ['Base plan cost', formatUsd(meter.basePlanCostUsd ?? meter.subscriptionUsd)],
+              ['Overage', formatUsd(meter.overageUsd)],
+              ['Usage value', formatUsd(meter.totalUsageUsd)],
+              ['AI credits used', formatCount(meter.aiCreditsUsed ?? meter.includedUsageConsumedCredits)],
+              ['AI credits left', formatCount(meter.aiCreditsRemaining ?? meter.remainingIncludedCredits)],
+              ['AI credit cap', formatCount(meter.aiCreditsIncluded ?? meter.includedCredits)],
+              ['Usage %', String(quotaPercent.toFixed(1)) + '%'],
               ['Reset', meter.resetDateUtc || meter.resetDate || '—']
             ]
-          : [
-              ['Plan', meter.plan],
-              ['Subscription', formatUsd(meter.subscriptionUsd)],
-              ['Total usage', formatUsd(meter.totalUsageUsd)],
-              ['Included used', formatUsd(meter.includedUsageConsumedUsd)],
-              ['Included left', formatUsd(meter.remainingIncludedUsd)],
-              ['Overage USD', formatUsd(meter.overageUsd)],
-              ['Monthly spend', formatUsd(meter.totalMonthlySpendUsd)],
-              ['Total credits', formatCount(meter.usedCredits)],
-              ['Included credits', formatCount(meter.includedUsageConsumedCredits)],
-              ['Overage credits', formatCount(meter.overageCredits)],
-              ['Allowance', formatCount(meter.includedCredits)],
-              ['Allowance left', formatCount(meter.remainingIncludedCredits)],
-              ['Included %', String(Number(meter.includedUsagePercent || 0).toFixed(1)) + '%'],
-              ['Reset', meter.resetDateUtc || meter.resetDate || '—']
-            ])
           .map(([label, value]) => '<div class="metric"><div class="label">' + label + '</div><div class="value">' + value + '</div></div>').join('');
         rawMeter.textContent = JSON.stringify(meter, null, 2);
 
